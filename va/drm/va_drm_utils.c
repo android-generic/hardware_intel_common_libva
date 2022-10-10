@@ -53,18 +53,19 @@ va_DRM_GetDrmDriverName(int fd)
 VAStatus
 VA_DRM_GetDriverNames(VADriverContextP ctx, char **drivers, unsigned *num_drivers)
 {
-#define MAX_NAMES 2 // Adjust if needed
+#define MAX_NAMES 3 // Adjust if needed
 
     static const struct {
         const char * const drm_driver;
         const char * const va_driver[MAX_NAMES];
     } map[] = {
         { "xe",         { "iHD"              } },
-        { "i915",       { "iHD", "i965"      } }, // Intel Media and OTC GenX
+        { "i915",       { "iHD", "i965", "crocus"      } }, // Intel Media and OTC GenX
         { "pvrsrvkm",   { "pvr"              } }, // Intel UMG PVR
         { "radeon",     { "r600", "radeonsi" } }, // Mesa Gallium
         { "amdgpu",     { "radeonsi"         } }, // Mesa Gallium
         { "WSL",        { "d3d12"            } }, // Mesa Gallium
+        { "nouveau",    { "nouveau"          } }, // Mesa Gallium driver
         { "nvidia-drm", { "nvidia"           } }, // Unofficial NVIDIA
     };
 
