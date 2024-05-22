@@ -59,6 +59,7 @@ VA_DRM_GetDriverNames(VADriverContextP ctx, char **drivers, unsigned *num_driver
         const char * const drm_driver;
         const char * const va_driver[MAX_NAMES];
     } map[] = {
+        { "xe",         { "iHD"              } },
         { "i915",       { "iHD", "i965", "crocus" } }, // Intel Media and OTC GenX
         { "pvrsrvkm",   { "pvr"              } }, // Intel UMG PVR
         { "radeon",     { "r600", "radeonsi" } }, // Mesa Gallium
@@ -71,6 +72,9 @@ VA_DRM_GetDriverNames(VADriverContextP ctx, char **drivers, unsigned *num_driver
     const struct drm_state * const drm_state = ctx->drm_state;
     char *drm_driver;
     unsigned count = 0;
+
+    if (!drm_state || drm_state->fd < 0)
+        return VA_STATUS_ERROR_INVALID_DISPLAY;
 
     drm_driver = va_DRM_GetDrmDriverName(drm_state->fd);
     if (!drm_driver)

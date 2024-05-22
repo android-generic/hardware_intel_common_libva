@@ -1036,6 +1036,20 @@ typedef enum {
      * The value returned uses the VAConfigAttribValEncPerBlockControl type.
      */
     VAConfigAttribEncPerBlockControl    = 55,
+    /**
+     * \brief Maximum number of tile rows. Read-only.
+     *
+     * This attribute determines the maximum number of tile
+     * rows supported for encoding with tile support.
+     */
+    VAConfigAttribEncMaxTileRows        = 56,
+    /**
+     * \brief Maximum number of tile cols. Read-only.
+     *
+     * This attribute determines the maximum number of tile
+     * columns supported for encoding with tile support.
+     */
+    VAConfigAttribEncMaxTileCols        = 57,
     /**@}*/
     VAConfigAttribTypeMax
 } VAConfigAttribType;
@@ -1685,6 +1699,15 @@ typedef enum {
      * when importing an existing buffer.
      */
     VASurfaceAttribDRMFormatModifiers,
+    /** \brief width and height log2 aligment in pixels (int, read-only)
+     *
+     * For special HW requirement used in some codecs, if
+     * VASurfaceAttribAlignmentSize is not implemented in the driver, then
+     * the surface_width and surface_height should keep the original logic
+     * without any modification, this is an add-on requirement to
+     * surface_width and surface_height.
+     */
+    VASurfaceAttribAlignmentSize,
     /** \brief Number of surface attributes. */
     VASurfaceAttribCount
 } VASurfaceAttribType;
@@ -1713,6 +1736,20 @@ typedef struct _VASurfaceAttrib {
 /** \brief User pointer memory type is supported. */
 #define VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR     0x00000004
 /**@}*/
+/**
+ * \brief VASurfaceAttribAlignmentStruct structure for
+ * the VASurfaceAttribAlignmentSize attribute.
+ */
+typedef union _VASurfaceAttribAlignmentStruct {
+    struct {
+        /** \brief log2 width aligment */
+        uint32_t log2_width_alignment  : 4;
+        /** \brief log2 height aligment */
+        uint32_t log2_height_alignment : 4;
+        uint32_t reserved              : 24;
+    } bits;
+    uint32_t value;
+} VASurfaceAttribAlignmentStruct;
 
 /**
  * \brief VASurfaceAttribExternalBuffers structure for
@@ -3878,6 +3915,28 @@ VAStatus vaMapBuffer(
     VADisplay dpy,
     VABufferID buf_id,  /* in */
     void **pbuf     /* out */
+);
+
+/**
+ * Map data store of the buffer into the client's address space
+ * this interface could be used to convey the operation hint
+ * backend driver could use these hint to optimize the implementations
+ */
+
+/** \brief VA_MAPBUFFER_FLAG_DEFAULT is used when there are no flag specified
+ * same as VA_MAPBUFFER_FLAG_READ | VA_MAPBUFFER_FLAG_WRITE.
+ */
+#define VA_MAPBUFFER_FLAG_DEFAULT 0
+/** \brief application will read the surface after map */
+#define VA_MAPBUFFER_FLAG_READ    1
+/** \brief application will write the surface after map */
+#define VA_MAPBUFFER_FLAG_WRITE   2
+
+VAStatus vaMapBuffer2(
+    VADisplay dpy,
+    VABufferID buf_id,  /* in */
+    void **pbuf,        /* out */
+    uint32_t flags      /* in */
 );
 
 /**
