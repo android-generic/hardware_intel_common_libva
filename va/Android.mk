@@ -25,8 +25,8 @@
 
 LOCAL_PATH:= $(call my-dir)
 
-LIBVA_DRIVERS_PATH_32 := /vendor/lib/dri
-LIBVA_DRIVERS_PATH_64 := /vendor/lib64/dri
+LIBVA_DRIVERS_PATH_32 := /vendor/lib
+LIBVA_DRIVERS_PATH_64 := /vendor/lib64
 LIBVA_CONFIG_DIR := /vendor/etc
 
 include $(CLEAR_VARS)
