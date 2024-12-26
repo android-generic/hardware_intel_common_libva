@@ -108,6 +108,9 @@ cc_library_shared {
         "-Winvalid-pch",
         "-DSYSCONFDIR=\"/vendor/etc\"",
         "-DLOG_TAG=\"libva\"",
+        "-Wno-sign-compare",
+	    "-Wno-missing-field-initializers",
+	    "-Wno-unused-parameter",
     ],
 
     arch: {
@@ -145,6 +148,9 @@ cc_library_shared {
         "-Werror",
         "-Winvalid-pch",
         "-DLOG_TAG=\"libva-android\"",
+        "-Wno-sign-compare",
+	    "-Wno-missing-field-initializers",
+	    "-Wno-unused-parameter",
     ],
 
     vendor: true,
