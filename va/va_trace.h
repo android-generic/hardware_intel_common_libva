@@ -37,12 +37,15 @@ extern int va_trace_flag;
 #define VA_TRACE_FLAG_SURFACE_DECODE  0x8
 #define VA_TRACE_FLAG_SURFACE_ENCODE  0x10
 #define VA_TRACE_FLAG_SURFACE_JPEG    0x20
+#define VA_TRACE_FLAG_SURFACE_VPPOUT  0x80
+
 #define VA_TRACE_FLAG_SURFACE         (VA_TRACE_FLAG_SURFACE_DECODE | \
                                        VA_TRACE_FLAG_SURFACE_ENCODE | \
                                        VA_TRACE_FLAG_SURFACE_JPEG)
 #define VA_TRACE_FLAG_FTRACE          0x40
 #define VA_TRACE_FLAG_FTRACE_BUFDATA  (VA_TRACE_FLAG_FTRACE | \
                                        VA_TRACE_FLAG_BUFDATA)
+
 
 #define VA_TRACE_LOG(trace_func,...)            \
     if (va_trace_flag & VA_TRACE_FLAG_LOG) {    \
@@ -505,6 +508,14 @@ void va_TraceExportSurfaceHandle(
     uint32_t         memType,
     uint32_t         flags,
     void             *descriptor);
+
+/** \brief va_TraceDeriveImage
+ * trace derive image */
+DLL_HIDDEN
+void va_TraceDeriveImage(
+    VADisplay dpy,
+    VASurfaceID surface,
+    VAImage *image);
 
 #ifdef __cplusplus
 }

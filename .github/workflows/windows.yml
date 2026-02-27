@@ -10,9 +10,9 @@ jobs:
     runs-on: windows-2022
     steps:
     - name: 'Checkout'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: 'Setup Python'
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.x'
     - name: 'Install Meson'
@@ -31,9 +31,9 @@ jobs:
     runs-on: windows-2022
     steps:
     - name: 'Checkout'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: 'Setup Python'
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.x'
     - name: 'Install Meson'
@@ -57,7 +57,7 @@ jobs:
         shell: msys2 {0}
     steps:
     - name: 'Checkout'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: 'Setup MSYS2'
       uses: msys2/setup-msys2@v2
       with:
