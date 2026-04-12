@@ -1,5 +1,22 @@
-libva NEWS -- summary of user visible changes.  2024-06-20
-Copyright (C) 2009-2024 Intel Corporation
+libva NEWS -- summary of user visible changes.  2025-12-12
+Copyright (C) 2009-2025 Intel Corporation
+
+version 2.23.0 - 12.Dec.2025
+* va: add VAProfileH264High422
+* va: add av1 profile2
+* va: correct the description of segment id map buffer for vp9e
+* va: encode segmentation map refine
+* va: add defintions for segment id block size
+* trace: support more format surface dump
+* trace:add vpp output surface dump support
+* trace: add Y410 support in dump surface
+* trace: add trace for vaDeriveImage
+* trace: add missing trace fields for VAProcPipelineParameterBuffer
+* doc: add backward compatibility declarison declaration
+* android: Remove unnecessary Android code
+* android: Include directories and generated header files in Android.bp
+* android: Update Android.bp to generate va_version.h and build only for x86_64
+* android: Add Android.bp to replace mk files
 
 version 2.22.0 - 20.Jun.2024
 * va:Add VVC decode LibVA interface.

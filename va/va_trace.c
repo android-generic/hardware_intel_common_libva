@@ -846,6 +846,11 @@ void va_TraceInit(VADisplay dpy)
             va_trace_flag |= VA_TRACE_FLAG_SURFACE_ENCODE;
         if (strstr(env_value, "jpeg") || strstr(env_value, "jpg"))
             va_trace_flag |= VA_TRACE_FLAG_SURFACE_JPEG;
+        /* now one context only support 1 surface dump file
+         * may add vpp input in future
+         */
+        if (strstr(env_value, "vppout"))
+            va_trace_flag |= VA_TRACE_FLAG_SURFACE_VPPOUT;
 
         if (va_parseConfig("LIBVA_TRACE_SURFACE_GEOMETRY", &env_value[0]) == 0) {
             char *p = env_value, *q;
@@ -995,6 +1000,247 @@ static void va_TraceMsg(struct trace_context *trace_ctx, const char *msg, ...)
     va_end(args);
 }
 
+typedef struct _TracePictureLayout {
+    /*input*/
+    uint32_t fourcc;
+    uint32_t width;
+    uint32_t height;
+    uint32_t start_x;
+    uint32_t start_y;
+    /*output*/
+    uint32_t num_planes;
+    uint32_t plane_start_x[4];
+    uint32_t plane_start_y[4];
+    uint32_t plane_width[4]; /*width in bytes*/
+    uint32_t plane_height[4]; /*lines*/
+    uint32_t reserved[4];
+} TracePictureLayout;
+
+static void va_TraceRetrieveImageInfo(TracePictureLayout * pLayout)
+{
+    uint32_t fourcc = pLayout->fourcc;
+    uint32_t width = pLayout->width;
+    uint32_t height = pLayout->height;
+    uint32_t start_x = pLayout->start_x;
+    uint32_t start_y = pLayout->start_y;
+
+    if ((!fourcc) || (!width) || (!height)) {
+        pLayout->num_planes = 0;
+        return;
+    }
+    /* set initial values*/
+    pLayout->plane_width[0] = width;
+    pLayout->plane_height[0] = height;
+    pLayout->plane_start_x[0] = start_x;
+    pLayout->plane_start_y[0] = start_y;
+
+    pLayout->num_planes = 1;
+
+    switch (fourcc) {
+    case VA_FOURCC_NV12:
+    case VA_FOURCC_NV21:
+        pLayout->plane_width[1] = width;
+        pLayout->plane_height[1] = height / 2;
+        pLayout->plane_start_x[1] = start_x;
+        pLayout->plane_start_y[1] = start_y / 2;
+        pLayout->num_planes = 2;
+        break;
+    case VA_FOURCC_RGBA:
+    case VA_FOURCC_RGBX:
+    case VA_FOURCC_BGRA:
+    case VA_FOURCC_BGRX:
+    case VA_FOURCC_ARGB:
+    case VA_FOURCC_XRGB:
+    case VA_FOURCC_ABGR:
+    case VA_FOURCC_XBGR:
+    case VA_FOURCC_AYUV:
+    case VA_FOURCC_Y410:
+    case VA_FOURCC_A2R10G10B10:
+    case VA_FOURCC_A2B10G10R10:
+    case VA_FOURCC_X2R10G10B10:
+    case VA_FOURCC_X2B10G10R10:
+    case VA_FOURCC_XYUV:
+        pLayout->plane_width[0] = width * 4;
+        pLayout->plane_start_x[0] = start_x * 4;
+        break;
+
+    case VA_FOURCC_UYVY:
+    case VA_FOURCC_YUY2:
+    case VA_FOURCC_Y16:
+    case VA_FOURCC_VYUY:
+    case VA_FOURCC_YVYU:
+        pLayout->plane_width[0] = width * 2;
+        pLayout->plane_start_x[0] = start_x * 2;
+        break;
+
+    case VA_FOURCC_YV12:
+    case VA_FOURCC_I420:
+    case VA_FOURCC_IMC3:
+    case VA_FOURCC_411P:
+    case VA_FOURCC_411R:
+        pLayout->plane_width[1] = width / 2;
+        pLayout->plane_width[2] = width / 2;
+        pLayout->plane_height[1] = height / 2;
+        pLayout->plane_height[2] = height / 2;
+        pLayout->plane_start_x[1] = start_x / 2;
+        pLayout->plane_start_x[2] = start_x / 2;
+        pLayout->plane_start_y[1] = start_y / 2;
+        pLayout->plane_start_y[2] = start_y / 2;
+        pLayout->num_planes = 3;
+        break;
+
+    case VA_FOURCC_P208:
+        pLayout->plane_width[1] = width;
+        pLayout->plane_height[1] = height;
+        pLayout->plane_start_x[1] = start_x;
+        pLayout->plane_start_y[1] = start_y;
+        pLayout->num_planes = 2;
+        break;
+
+    case VA_FOURCC_YV32:
+        pLayout->plane_width[1] =
+            pLayout->plane_width[2] =
+                pLayout->plane_width[3] = width;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] =
+                pLayout->plane_height[3] = height;
+        pLayout->plane_start_x[1] =
+            pLayout->plane_start_x[2] =
+                pLayout->plane_start_x[3] = start_x;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] =
+                pLayout->plane_start_y[3] = start_y;
+        pLayout->num_planes = 4;
+        break;
+
+
+    case VA_FOURCC_YV24:
+    case VA_FOURCC_444P:
+    case VA_FOURCC_RGBP:
+    case VA_FOURCC_BGRP:
+        pLayout->plane_width[1] =
+            pLayout->plane_width[2] = width;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] = height;
+        pLayout->plane_start_x[1] =
+            pLayout->plane_start_x[2] = start_x;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] = start_y;
+        pLayout->num_planes = 3;
+        break;
+
+    case VA_FOURCC_422H:
+        pLayout->plane_width[1] =
+            pLayout->plane_width[2] = width / 2;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] = height;
+        pLayout->plane_start_x[1] =
+            pLayout->plane_start_x[2] = start_x / 2;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] = start_y;
+        pLayout->num_planes = 3;
+        break;
+    case VA_FOURCC_422V:
+        pLayout->plane_width[1] =
+            pLayout->plane_width[2] = width;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] = height / 2;
+        pLayout->plane_start_x[1] =
+            pLayout->plane_start_x[2] = start_x;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] = start_y / 2;
+        pLayout->num_planes = 3;
+        break;
+    case VA_FOURCC_RGB565:
+    case VA_FOURCC_BGR565:
+        pLayout->plane_width[0] = width * 2;
+        pLayout->plane_start_x[0] = start_x * 2;
+        break;
+
+    case VA_FOURCC_Y210:
+    case VA_FOURCC_Y212:
+    case VA_FOURCC_Y216:
+    case VA_FOURCC_Y412:
+    case VA_FOURCC_Y416:
+        pLayout->plane_width[0] = width * 8;
+        pLayout->plane_start_x[0] = start_x * 8;
+        break;
+
+    case VA_FOURCC_YV16:
+        pLayout->plane_width[1] =
+            pLayout->plane_width[2] = width / 2;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] = height;
+        pLayout->plane_start_x[1] =
+            pLayout->plane_start_x[2] = start_x / 2;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] = start_y;
+        pLayout->num_planes = 3;
+        break;
+    case VA_FOURCC_P010:
+    case VA_FOURCC_P012:
+    case VA_FOURCC_P016:
+        pLayout->plane_width[0] = width * 2;
+        pLayout->plane_width[1] = width * 2;
+        pLayout->plane_height[1] = height / 2;
+        pLayout->plane_start_x[0] = start_x * 2;
+        pLayout->plane_start_x[1] = start_x * 2;
+        pLayout->plane_start_y[1] = start_y / 2;
+        pLayout->num_planes = 2;
+        break;
+    case VA_FOURCC_I010:
+        pLayout->plane_width[0] = width * 2;
+        pLayout->plane_width[1] =
+            pLayout->plane_width[2] = width;
+        pLayout->plane_height[0] = height;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] = height / 2;
+        pLayout->plane_start_x[0] = start_x * 2;
+        pLayout->plane_start_x[1] =
+            pLayout->plane_start_x[2] = start_x;
+        pLayout->plane_start_y[0] = start_y;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] = start_y / 2;
+        pLayout->num_planes = 3;
+
+        break;
+
+    case VA_FOURCC_ARGB64:
+    case VA_FOURCC_ABGR64:
+        pLayout->plane_width[0] =
+            pLayout->plane_width[1] =
+                pLayout->plane_width[2] =
+                    pLayout->plane_width[3] = width * 2;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] =
+                pLayout->plane_height[3] = height;
+        pLayout->plane_start_x[0] =
+            pLayout->plane_start_x[1] =
+                pLayout->plane_start_x[2] =
+                    pLayout->plane_start_x[3] = start_x * 2;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] =
+                pLayout->plane_start_y[3] = start_y;
+        pLayout->num_planes = 4;
+        break;
+    case VA_FOURCC_Q416:
+        pLayout->plane_width[0] =
+            pLayout->plane_width[1] =
+                pLayout->plane_width[2] = width * 2;
+        pLayout->plane_height[1] =
+            pLayout->plane_height[2] = height;
+        pLayout->plane_start_x[0] =
+            pLayout->plane_start_x[1] =
+                pLayout->plane_start_x[2] = start_x * 2;
+        pLayout->plane_start_y[1] =
+            pLayout->plane_start_y[2] = start_y;
+        break;
+
+    default: /*Y800 Y8*/
+        break;
+    }
+}
+
 static void va_TraceSurface(VADisplay dpy, VAContextID context)
 {
     unsigned int i;
@@ -1007,9 +1253,9 @@ static void va_TraceSurface(VADisplay dpy, VAContextID context)
     unsigned int chroma_v_offset;
     unsigned int buffer_name;
     void *buffer = NULL;
-    unsigned char *Y_data, *UV_data, *tmp;
-    unsigned int pixel_byte;
+    unsigned char *Y_data, *U_data, *V_data, *tmp;
     VAStatus va_status;
+    TracePictureLayout layout = {0};
     DPY2TRACECTX(dpy, context, VA_INVALID_ID);
 
     if (!trace_ctx->trace_fp_surface)
@@ -1053,33 +1299,47 @@ static void va_TraceSurface(VADisplay dpy, VAContextID context)
     va_TraceMsg(trace_ctx, NULL);
 
     Y_data = (unsigned char*)buffer;
-    UV_data = (unsigned char*)buffer + chroma_u_offset;
+    U_data = (unsigned char*)buffer + chroma_u_offset;
+    V_data = (unsigned char*)buffer + chroma_v_offset;
 
-    if (fourcc == VA_FOURCC_P010)
-        pixel_byte = 2;
-    else
-        pixel_byte = 1;
+    layout.width = trace_ctx->trace_surface_width;
+    layout.height = trace_ctx->trace_surface_height;
+    layout.start_x = trace_ctx->trace_surface_xoff;
+    layout.start_y = trace_ctx->trace_surface_yoff;
+    layout.fourcc = fourcc;
 
-    tmp = Y_data + luma_stride * trace_ctx->trace_surface_yoff;
+    va_TraceRetrieveImageInfo(&layout);
 
-    for (i = 0; i < trace_ctx->trace_surface_height; i++) {
-        fwrite(tmp + trace_ctx->trace_surface_xoff,
-               trace_ctx->trace_surface_width,
-               pixel_byte, trace_ctx->trace_fp_surface);
+    tmp = Y_data + luma_stride * layout.plane_start_y[0];
+
+    for (i = 0; i < layout.plane_height[0]; i++) {
+        fwrite(tmp + layout.plane_start_x[0],
+               layout.plane_width[0],
+               1, trace_ctx->trace_fp_surface);
 
         tmp += luma_stride;
     }
 
-    tmp = UV_data + chroma_u_stride * trace_ctx->trace_surface_yoff / 2;
-    if (fourcc == VA_FOURCC_NV12 || fourcc == VA_FOURCC_P010) {
-        for (i = 0; i < trace_ctx->trace_surface_height / 2; i++) {
-            fwrite(tmp + trace_ctx->trace_surface_xoff,
-                   trace_ctx->trace_surface_width,
-                   pixel_byte, trace_ctx->trace_fp_surface);
-
+    if (layout.num_planes > 1) {
+        tmp = U_data + chroma_u_stride * layout.plane_start_y[1];
+        for (i = 0; i < layout.plane_height[1]; i++) {
+            fwrite(tmp + layout.plane_start_x[1],
+                   layout.plane_width[1],
+                   1, trace_ctx->trace_fp_surface);
             tmp += chroma_u_stride;
         }
     }
+
+    if (layout.num_planes > 2) {
+        tmp = V_data + chroma_v_stride * layout.plane_start_y[2];
+        for (i = 0; i < layout.plane_height[2]; i++) {
+            fwrite(tmp + layout.plane_start_x[2],
+                   layout.plane_width[2],
+                   1, trace_ctx->trace_fp_surface);
+            tmp += chroma_v_stride;
+        }
+    }
+
 
     fflush(trace_ctx->trace_fp_surface);
 
@@ -1438,7 +1698,7 @@ void va_TraceCreateContext(
     struct va_trace *pva_trace = NULL;
     struct trace_context *trace_ctx = NULL;
     int tra_ctx_id = 0;
-    int encode = 0, decode = 0, jpeg = 0;
+    int encode = 0, decode = 0, jpeg = 0, vpp = 0;
     int i;
 
     pva_trace = (struct va_trace *)(((VADisplayContextP)dpy)->vatrace);
@@ -1523,9 +1783,12 @@ void va_TraceCreateContext(
     encode = (trace_ctx->trace_entrypoint == VAEntrypointEncSlice);
     decode = (trace_ctx->trace_entrypoint == VAEntrypointVLD);
     jpeg = (trace_ctx->trace_entrypoint == VAEntrypointEncPicture);
+    vpp = (trace_ctx->trace_entrypoint == VAEntrypointVideoProc);
+
     if ((encode && (va_trace_flag & VA_TRACE_FLAG_SURFACE_ENCODE)) ||
         (decode && (va_trace_flag & VA_TRACE_FLAG_SURFACE_DECODE)) ||
-        (jpeg && (va_trace_flag & VA_TRACE_FLAG_SURFACE_JPEG))) {
+        (jpeg && (va_trace_flag & VA_TRACE_FLAG_SURFACE_JPEG)) ||
+        (vpp && (va_trace_flag & VA_TRACE_FLAG_SURFACE_VPPOUT))) {
         if (open_tracing_specil_file(pva_trace, trace_ctx, 1) < 0) {
             va_errorMessage(dpy, "Open surface fail failed for ctx 0x%08x\n", *context);
 
@@ -6606,7 +6869,62 @@ va_TraceVAProcPipelineParameterBuffer(
         }
     }
 
-    /* FIXME: add other info later */
+    va_TraceMsg(trace_ctx, "\t  rotation_state = 0x%08x\n", p->rotation_state);
+
+    if (p->blend_state) {
+        va_TraceMsg(trace_ctx, "\t  blend_state\n");
+        va_TraceMsg(trace_ctx, "\t    flags = 0x%08x\n", p->blend_state->flags);
+        va_TraceMsg(trace_ctx, "\t    global_alpha = %f\n", p->blend_state->global_alpha);
+        va_TraceMsg(trace_ctx, "\t    min_luma = %f\n", p->blend_state->min_luma);
+        va_TraceMsg(trace_ctx, "\t    max_luma = %f\n", p->blend_state->max_luma);
+    } else {
+        va_TraceMsg(trace_ctx, "\t  blend_state = (NULL)\n");
+    }
+
+    va_TraceMsg(trace_ctx, "\t  mirror_state = 0x%08x\n", p->mirror_state);
+    va_TraceMsg(trace_ctx, "\t  num_additional_outputs = %d\n", p->num_additional_outputs);
+
+    if (p->num_additional_outputs) {
+        va_TraceMsg(trace_ctx, "\t  additional_outputs\n");
+
+        if (p->additional_outputs) {
+            /* only dump the first 5 additional outputs */
+            for (i = 0; i < p->num_additional_outputs && i < 5; i++) {
+                va_TraceMsg(trace_ctx, "\t    additional_outputs[%d] = 0x%08x\n", i, p->additional_outputs[i]);
+            }
+        } else {
+            for (i = 0; i < p->num_additional_outputs && i < 5; i++) {
+                va_TraceMsg(trace_ctx, "\t    additional_outputs[%d] = (NULL)\n", i);
+            }
+        }
+    }
+
+    va_TraceMsg(trace_ctx, "\t  input_surface_flag = 0x%08x\n", p->input_surface_flag);
+    va_TraceMsg(trace_ctx, "\t  output_surface_flag = 0x%08x\n", p->output_surface_flag);
+
+    va_TraceMsg(trace_ctx, "\t  input_color_properties\n");
+    va_TraceMsg(trace_ctx, "\t    chroma_sample_location = 0x%02x\n", p->input_color_properties.chroma_sample_location);
+    va_TraceMsg(trace_ctx, "\t    color_range = %d\n", p->input_color_properties.color_range);
+    va_TraceMsg(trace_ctx, "\t    colour_primaries = %d\n", p->input_color_properties.colour_primaries);
+    va_TraceMsg(trace_ctx, "\t    transfer_characteristics = %d\n", p->input_color_properties.transfer_characteristics);
+    va_TraceMsg(trace_ctx, "\t    matrix_coefficients = %d\n", p->input_color_properties.matrix_coefficients);
+
+    va_TraceMsg(trace_ctx, "\t  output_color_properties\n");
+    va_TraceMsg(trace_ctx, "\t    chroma_sample_location = 0x%02x\n", p->output_color_properties.chroma_sample_location);
+    va_TraceMsg(trace_ctx, "\t    color_range = %d\n", p->output_color_properties.color_range);
+    va_TraceMsg(trace_ctx, "\t    colour_primaries = %d\n", p->output_color_properties.colour_primaries);
+    va_TraceMsg(trace_ctx, "\t    transfer_characteristics = %d\n", p->output_color_properties.transfer_characteristics);
+    va_TraceMsg(trace_ctx, "\t    matrix_coefficients = %d\n", p->output_color_properties.matrix_coefficients);
+
+    va_TraceMsg(trace_ctx, "\t  processing_mode = %d\n", p->processing_mode);
+
+    if (p->output_hdr_metadata) {
+        va_TraceMsg(trace_ctx, "\t  output_hdr_metadata\n");
+        va_TraceMsg(trace_ctx, "\t    metadata_type = %d\n", p->output_hdr_metadata->metadata_type);
+        va_TraceMsg(trace_ctx, "\t    metadata_size = %d\n", p->output_hdr_metadata->metadata_size);
+    } else {
+        va_TraceMsg(trace_ctx, "\t  output_hdr_metadata = (NULL)\n");
+    }
 
     va_TraceMsg(trace_ctx, NULL);
 }
@@ -6688,6 +7006,7 @@ void va_TraceRenderPicture(
             }
             break;
         case VAProfileH264High10:
+        case VAProfileH264High422:
         case VAProfileH264Main:
         case VAProfileH264High:
         case VAProfileH264ConstrainedBaseline:
@@ -6775,6 +7094,7 @@ void va_TraceRenderPicture(
             break;
         case VAProfileAV1Profile0:
         case VAProfileAV1Profile1:
+        case VAProfileAV1Profile2:
             for (j = 0; j < num_elements; j++) {
                 va_TraceMsg(trace_ctx, "\telement[%d] = \n", j);
 
@@ -6812,12 +7132,13 @@ void va_TraceEndPictureExt(
     int endpic_done
 )
 {
-    int encode, decode, jpeg;
+    int encode, decode, jpeg, vpp;
     DPY2TRACECTX(dpy, context, VA_INVALID_ID);
     /* avoid to create so many empty files */
     encode = (trace_ctx->trace_entrypoint == VAEntrypointEncSlice);
     decode = (trace_ctx->trace_entrypoint == VAEntrypointVLD);
     jpeg = (trace_ctx->trace_entrypoint == VAEntrypointEncPicture);
+    vpp = (trace_ctx->trace_entrypoint == VAEntrypointVideoProc);
 
     /* trace encode source surface, can do it before HW completes rendering */
     if ((encode && (va_trace_flag & VA_TRACE_FLAG_SURFACE_ENCODE)) ||
@@ -6825,7 +7146,8 @@ void va_TraceEndPictureExt(
         va_TraceSurface(dpy, context);
 
     /* trace decoded surface, do it after HW completes rendering */
-    if (decode && ((va_trace_flag & VA_TRACE_FLAG_SURFACE_DECODE))) {
+    if ((decode && (va_trace_flag & VA_TRACE_FLAG_SURFACE_DECODE)) ||
+        (vpp && (va_trace_flag & VA_TRACE_FLAG_SURFACE_VPPOUT))) {
         vaSyncSurface(dpy, trace_ctx->trace_rendertarget);
         va_TraceSurface(dpy, context);
     }
@@ -7243,6 +7565,43 @@ void va_TraceExportSurfaceHandle(
         va_TraceMsg(trace_ctx, "\tlayer %d, offset     = [%d, %d, %d, %d]\n", i, desc->layers[i].offset[0], desc->layers[i].offset[1], desc->layers[i].offset[2], desc->layers[i].offset[3]);
         va_TraceMsg(trace_ctx, "\tlayer %d, pitch      = [%d, %d, %d, %d]\n", i, desc->layers[i].pitch[0], desc->layers[i].pitch[1], desc->layers[i].pitch[2], desc->layers[i].pitch[3]);
     }
+
+    DPY2TRACE_VIRCTX_EXIT(pva_trace);
+}
+
+void va_TraceDeriveImage(VADisplay dpy, VASurfaceID surface, VAImage *image)
+{
+    DPY2TRACE_VIRCTX(dpy);
+
+    TRACE_FUNCNAME(idx);
+
+    va_TraceMsg(trace_ctx, "surfaceID = %d, imageID = %d\n", surface, image->image_id);
+    va_TraceMsg(trace_ctx, "format:\n");
+    va_TraceMsg(trace_ctx, "\tfourcc = 0x%08x\n", image->format.fourcc);
+    if (image->format.byte_order == VA_LSB_FIRST)
+        va_TraceMsg(trace_ctx, "byte_order = VA_LSB_FIRST\n");
+    else if (image->format.byte_order == VA_MSB_FIRST)
+        va_TraceMsg(trace_ctx, "byte_order = VA_MSB_FIRST\n");
+    else
+        va_TraceMsg(trace_ctx, "byte_order = %d\n", image->format.byte_order);
+    va_TraceMsg(trace_ctx, "\tformat.bits_per_pixel = %d\n", image->format.bits_per_pixel);
+    va_TraceMsg(trace_ctx, "\tformat.depth= %d\n", image->format.depth);
+    va_TraceMsg(trace_ctx, "\tformat.red_mask = 0x%08x\n", image->format.red_mask);
+    va_TraceMsg(trace_ctx, "\tformat.greeen_mask = 0x%08x\n", image->format.green_mask);
+    va_TraceMsg(trace_ctx, "\tformat.blue_mask = 0x%08x\n", image->format.blue_mask);
+    va_TraceMsg(trace_ctx, "\tformat.alpha_mask = 0x%08x\n", image->format.alpha_mask);
+
+    va_TraceMsg(trace_ctx, "bufferID = %d\n", image->buf);
+    va_TraceMsg(trace_ctx, "width = %d\n", image->width);
+    va_TraceMsg(trace_ctx, "height = %d\n", image->height);
+    va_TraceMsg(trace_ctx, "data_size = %d\n", image->data_size);
+    va_TraceMsg(trace_ctx, "num_planes = %d\n", image->num_planes);
+    va_TraceMsg(trace_ctx, "pitches = %d, %d, %d\n", image->pitches[0], image->pitches[1], image->pitches[2]);
+    va_TraceMsg(trace_ctx, "offsets = %d, %d, %d\n", image->offsets[0], image->offsets[1], image->offsets[2]);
+
+    va_TraceMsg(trace_ctx, "num_palette_entries = %d\n", image->num_palette_entries);
+    va_TraceMsg(trace_ctx, "entry_bytes= %d\n", image->entry_bytes);
+    va_TraceMsg(trace_ctx, "component_order = %c%c%c%c\n", image->component_order[0], image->component_order[1], image->component_order[2], image->component_order[3]);
 
     DPY2TRACE_VIRCTX_EXIT(pva_trace);
 }
